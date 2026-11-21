@@ -88,17 +88,20 @@ The git source checksum is `SKIP` (the `#commit=` pin already fixes the exact tr
 On any aarch64 Arch userland (e.g. Arch Linux ARM):
 
 ```sh
-sudo pacman -Syu --needed base-devel git kmod bc dtc uboot-tools pahole python rust rust-bindgen perl openssl libelf zstd
+sudo pacman -Syu --needed base-devel git kmod bc dtc uboot-tools pahole python rust rust-src rust-bindgen perl openssl libelf zstd
 MAKEFLAGS="-j$(nproc)" makepkg -f
 ```
 
 `make olddefconfig` in `build()` picks up new Kconfig defaults automatically, so the `config` file only needs manual attention when you want to change options.
 
+**`rust-src` is load-bearing:** ALARM splits the Rust standard-library sources into a separate `rust-src` package. Without it, `scripts/rust_is_available.sh` fails its core-library-source check and `olddefconfig` *silently* drops `CONFIG_RUST=y` — the build stays green but produces no Rust code and a headers package without `libmacros.so`/`target.json`/`rust/*.o`, breaking DKMS builds of Rust modules (exactly what happened to the pkgrel=1 packages). The CI therefore verifies after every build that the headers package contains `rust/libmacros.so` and `CONFIG_RUST=y`.
+
 ## Caveats
 
 - The CI build verifies that the packages **compile**; it does not boot-test them. Install on a board you can recover (serial console or removable eMMC/SD).
 - The kernel is unsigned; module signing keys are generated per-build if enabled in the config.
-- If a future kernel rejects Arch Linux ARM's `rustc` as too new (the kernel supports a bounded rustc range; 7.4-rc3 wants ≥ 1.85.0 and ALARM currently ships 1.100.0), the build fails at the Rust availability check with a clear message — pin an older rust via rustup in the workflow in that case.
+- CI runs on GitHub's `ubuntu-24.04-arm` hosted runners — **native aarch64** (image family `ubuntu24-arm64`), asserted at the start of every run. Building Rust modules out of tree additionally needs `rust` on the board itself.
+- If a future kernel rejects Arch Linux ARM's `rustc` as too new (the kernel supports a bounded rustc range; 7.3/7.4-rc3 want ≥ 1.85.0 and ALARM currently ships 1.100.0), the build fails at the Rust availability check with a clear message — pin an older rust via rustup in the workflow in that case.
 
 ## Licenses and attribution
 
