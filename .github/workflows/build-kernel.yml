@@ -153,8 +153,9 @@ jobs:
               echo "PKGDEST=\"/repo\"" >> "$MAKEPKG_CONF"
               echo "PKGEXT=\".pkg.tar.zst\"" >> "$MAKEPKG_CONF"
               echo "SRCEXT=\".src.tar.gz\"" >> "$MAKEPKG_CONF"
-              # Arch's strip flags (the _package-headers strip loop relies
-              # on them; without a definition it would run a full strip).
+              # Strip flags as used by Arch (the _package-headers strip
+              # loop relies on them; without a definition it would run a
+              # full strip).
               echo "STRIP_BINARIES=\"--strip-all\"" >> "$MAKEPKG_CONF"
               echo "STRIP_SHARED=\"--strip-unneeded\"" >> "$MAKEPKG_CONF"
               echo "STRIP_STATIC=\"--strip-unneeded\"" >> "$MAKEPKG_CONF"
@@ -166,10 +167,10 @@ jobs:
               # Both were missing from the pkgrel=1 packages because Kconfig
               # silently disables RUST when the toolchain is incomplete.
               hdr=$(ls /repo/*-headers-*.pkg.tar.zst)
-              tar --zstd -tf "$hdr" | grep -q 'build/rust/libmacros.so' \
+              tar --zstd -tf "$hdr" | grep -q "build/rust/libmacros.so" \
                 || { echo "ERROR: $hdr does not contain rust/libmacros.so"; exit 1; }
-              tar --zstd -xOf "$hdr" --wildcards '*/build/.config' \
-                | grep -q '^CONFIG_RUST=y' \
+              tar --zstd -xOf "$hdr" --wildcards "*/build/.config" \
+                | grep -q "^CONFIG_RUST=y" \
                 || { echo "ERROR: packaged kernel config lacks CONFIG_RUST=y"; exit 1; }
               echo "Rust artifacts verified in $hdr"
               # Safety net: copy any package that landed outside /repo
