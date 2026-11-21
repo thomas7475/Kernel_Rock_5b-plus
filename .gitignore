@@ -1,0 +1,10 @@
+# makepkg working directories and build outputs
+/src/
+/pkg/
+/dist/
+*.pkg.tar.zst
+*.pkg.tar.zst.sig
+
+# CI scratch
+alarm-rootfs.tar.gz
+*.log

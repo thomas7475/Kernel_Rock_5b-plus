@@ -1,0 +1,156 @@
+name: Build kernel packages
+
+# Automatically builds the kernel packages on GitHub's free arm64 hosted
+# runners whenever a release tag (v<version> on main) or a dev tag
+# (<version>-dev on dev) is pushed (or on a manual run). Dev tags are
+# published as pre-releases.
+#
+# How it works:
+#   1. The job runs directly on an ubuntu-24.04-arm runner (public repos
+#      get these for free) and frees the disk space the runner images
+#      waste on preinstalled toolchains we do not need (~10-15 GB).
+#   2. The official Arch Linux ARM aarch64 rootfs from os.archlinuxarm.org
+#      is imported into Docker -- makepkg needs an Arch userland, the
+#      official archlinux images are amd64-only, and this way no
+#      third-party container images are involved.
+#   3. makepkg builds the packages from the PKGBUILD in this repository.
+#   4. Tag builds also publish a GitHub Release with the packages.
+#
+# Requirements on the repository: it must be PUBLIC (private repos do not
+# get the free arm64 runners) and Actions must be enabled (the default).
+# No secrets are needed: the workflow only uses the automatically provided
+# GITHUB_TOKEN, scoped to "contents: write" for the release job.
+
+on:
+  push:
+    tags:
+      - 'v*'      # release tags on main: v<kernel-version>
+      - '*-dev'   # dev tags on dev: <kernel-version>-dev
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ALARM_ROOTFS_URL: http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz
+
+jobs:
+  build:
+    name: makepkg on arm64 runner
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 350
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Show runner info and free disk space
+        run: |
+          echo "== runner =="
+          nproc
+          free -h
+          echo "== disk before cleanup =="
+          df -h /
+          # Remove preinstalled toolchains we do not need (~10-15 GB).
+          # Best effort: none of them are required to build this kernel.
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+                       /usr/local/.ghcup /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          echo "== disk after cleanup =="
+          df -h /
+
+      - name: Download and import the official Arch Linux ARM rootfs
+        run: |
+          curl -fL --retry 3 --retry-delay 5 \
+               -o "$RUNNER_TEMP/alarm-rootfs.tar.gz" "$ALARM_ROOTFS_URL"
+          sha256sum "$RUNNER_TEMP/alarm-rootfs.tar.gz"
+          docker import "$RUNNER_TEMP/alarm-rootfs.tar.gz" alarm-builder:latest
+          rm -f "$RUNNER_TEMP/alarm-rootfs.tar.gz"
+
+      - name: Build packages with makepkg
+        run: |
+          # Everything happens inside one container invocation: updating
+          # the (rolling) rootfs, installing the build dependencies and
+          # building, so the container layer is thrown away afterwards.
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo" -w /repo \
+            alarm-builder:latest bash -euxc '
+              # Refresh the keyring first so signature checks keep passing
+              # on a rootfs snapshot that may be a few months old.
+              pacman -Sy --noconfirm archlinuxarm-keyring || true
+              pacman -Syu --noconfirm
+              # base-devel = the toolchain makepkg assumes (gcc, make, ...);
+              # the rest = the PKGBUILD makedepends + kernel build needs.
+              pacman -S --needed --noconfirm \
+                base-devel git kmod bc dtc uboot-tools pahole python \
+                rust rust-bindgen perl openssl libelf zstd
+              pacman -Scc --noconfirm
+
+              echo "== toolchain =="
+              gcc --version | head -1
+              rustc --version
+              bindgen --version
+              pahole --version
+
+              # makepkg refuses to run as root; build as an unprivileged user.
+              id builder >/dev/null 2>&1 || useradd -m builder
+              chown -R builder:builder /repo
+              export MAKEFLAGS="-j$(nproc)"
+              runuser -u builder -- makepkg -f --noconfirm
+            '
+
+      - name: Collect packages and checksums
+        run: |
+          mkdir -p dist
+          cp -v "$GITHUB_WORKSPACE"/*.pkg.tar.zst dist/
+          cd dist
+          sha256sum *.pkg.tar.zst > SHA256SUMS
+          echo "== artifacts =="
+          cat SHA256SUMS
+
+      - name: Upload packages as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-packages
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+          # The packages are already zstd-compressed; do not compress again.
+          compression-level: 0
+
+  release:
+    name: Publish GitHub Release (tag builds only)
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      # Allow the automatically provided GITHUB_TOKEN to create the release.
+      contents: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-packages
+          path: dist
+
+      - name: Create release and upload packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          cd dist
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release for ${tag} already exists, uploading with --clobber"
+            gh release upload "$tag" *.pkg.tar.zst SHA256SUMS --clobber
+            exit 0
+          fi
+          # Dev tags (<version>-dev) publish as pre-releases so they never
+          # replace "latest"; release tags publish normally.
+          if [[ "$tag" == *-dev ]]; then
+            gh release create "$tag" --title "Kernel $tag (dev)" --prerelease \
+              --generate-notes *.pkg.tar.zst SHA256SUMS
+          else
+            gh release create "$tag" --title "Kernel $tag" --generate-notes \
+              *.pkg.tar.zst SHA256SUMS
+          fi
