@@ -3,6 +3,7 @@
 /pkg/
 /dist/
 *.pkg.tar.zst
+*.pkg.tar.xz
 *.pkg.tar.zst.sig
 
 # CI scratch

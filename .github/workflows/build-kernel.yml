@@ -121,33 +121,36 @@ jobs:
               id builder >/dev/null 2>&1 || useradd -m builder
               chown -R builder:builder /repo
               export MAKEFLAGS="-j$(nproc)"
-              # Pin the package output directory: newer pacman snapshots may
-              # set PKGDEST in /etc/makepkg.conf or in /etc/makepkg.conf.d
-              # fragments, which would leave the finished packages inside
-              # the discarded container instead of on the workspace.
+              # Pin the package output directory and extension: ALARM's
+              # makepkg.conf sets PKGEXT=.pkg.tar.xz (so the packages would
+              # never match the *.pkg.tar.zst patterns), and a pacman-updated
+              # makepkg.conf / makepkg.conf.d fragment could set PKGDEST
+              # inside the discarded container.
               sed -i "s|^#*PKGDEST=.*|PKGDEST=\"/repo\"|" /etc/makepkg.conf
               grep -q "^PKGDEST=" /etc/makepkg.conf || echo "PKGDEST=\"/repo\"" >> /etc/makepkg.conf
-              [ ! -d /etc/makepkg.conf.d ] || grep -rl PKGDEST /etc/makepkg.conf.d/ 2>/dev/null | xargs -r sed -i "s|^#*PKGDEST=.*|PKGDEST=\"/repo\"|"
+              sed -i "s|^#*PKGEXT=.*|PKGEXT=\".pkg.tar.zst\"|" /etc/makepkg.conf
+              grep -q "^PKGEXT=" /etc/makepkg.conf || echo "PKGEXT=\".pkg.tar.zst\"" >> /etc/makepkg.conf
+              [ ! -d /etc/makepkg.conf.d ] || { grep -rl PKGDEST /etc/makepkg.conf.d/ 2>/dev/null | xargs -r sed -i "s|^#*PKGDEST=.*|PKGDEST=\"/repo\"|" ; grep -rl PKGEXT /etc/makepkg.conf.d/ 2>/dev/null | xargs -r sed -i "s|^#*PKGEXT=.*|PKGEXT=\".pkg.tar.zst\"|" ; }
               export PKGDEST=/repo
               runuser -u builder -- makepkg -f --noconfirm
               # Safety net: copy any package that landed outside /repo
               # (e.g. via a config fragment) onto the mounted workspace
               # before the container exits.
-              find / -xdev -name "*.pkg.tar.zst" -not -path "/repo/*" \
+              find / -xdev -name "*.pkg.tar.*" -not -path "/repo/*" \
                 -not -path "/var/cache/*" -exec cp -v {} /repo/ \;
             '
 
       - name: Collect packages and checksums
         run: |
           mkdir -p dist
-          find "$GITHUB_WORKSPACE" -maxdepth 2 -name "*.pkg.tar.zst" \
+          find "$GITHUB_WORKSPACE" -maxdepth 2 -name "*.pkg.tar.*" \
             -exec cp -v {} dist/ \;
           cd dist
           echo "== artifacts found in workspace =="
           ls -la
-          n=$(find . -maxdepth 1 -name "*.pkg.tar.zst" | wc -l)
+          n=$(find . -maxdepth 1 -name "*.pkg.tar.*" | wc -l)
           [ "$n" -eq 2 ] || { echo "ERROR: expected exactly 2 packages, found $n"; exit 1; }
-          sha256sum *.pkg.tar.zst > SHA256SUMS
+          sha256sum *.pkg.tar.* > SHA256SUMS
           cat SHA256SUMS
 
       - name: Upload packages as workflow artifact
@@ -182,17 +185,19 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           cd dist
+          # *.pkg.tar.* (not just zst) so a stray compression setting in a
+          # future rootfs cannot make the release step lose the packages.
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release for ${tag} already exists, uploading with --clobber"
-            gh release upload "$tag" *.pkg.tar.zst SHA256SUMS --clobber
+            gh release upload "$tag" *.pkg.tar.* SHA256SUMS --clobber
             exit 0
           fi
           # Dev tags (<version>-dev) publish as pre-releases so they never
           # replace "latest"; release tags publish normally.
           if [[ "$tag" == *-dev ]]; then
             gh release create "$tag" --title "Kernel $tag (dev)" --prerelease \
-              --generate-notes *.pkg.tar.zst SHA256SUMS
+              --generate-notes *.pkg.tar.* SHA256SUMS
           else
             gh release create "$tag" --title "Kernel $tag" --generate-notes \
-              *.pkg.tar.zst SHA256SUMS
+              *.pkg.tar.* SHA256SUMS
           fi
