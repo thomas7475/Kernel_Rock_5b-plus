@@ -1,6 +1,13 @@
 # Kernel Rock 5B+
 
-Arch Linux ARM (aarch64) kernel packages for the **Radxa ROCK 5B+ (RK3588)**, built from [Collabora's rockchip hardware-enablement tree](https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git) with the **rocket NPU patch stack** (Gregory's [rocket series](https://github.com/gregordinary/patches) + Igor Paunović's [DVFS series](https://lore.kernel.org/r/20260922080114.44662-1-royalnet026@gmail.com)) on top.
+Arch Linux ARM (aarch64) kernel packages for the **Radxa ROCK 5B+ (RK3588)**, built in two tracks that share one repository, one workflow and one rocket NPU patch stack (Gregory's [rocket series](https://github.com/gregordinary/patches) + Igor Paunović's [DVFS series](https://lore.kernel.org/r/20260922080114.44662-1-royalnet026@gmail.com)):
+
+| track | branch | kernel source | package |
+|---|---|---|---|
+| **release** | `main` | mainline **stable** from kernel.org (e.g. `v7.3.5`) | `linux-aarch64-rockchip` |
+| **development** | `dev` | [Collabora's rockchip-devel tree](https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git) (e.g. `v7.4-rc3` based) | `linux-aarch64-rockchip-collabora` |
+
+The rocket NPU base driver has been part of mainline since 7.3 (`drivers/accel/rocket`), and mainline 7.3 ships the `rk3588-rock-5b-plus.dts` board description — so the stable track carries the same NPU stack as the development track, on a kernel that only contains released, reviewed code.
 
 The kernel is built automatically by GitHub Actions on a free arm64 runner whenever a tag is pushed; the resulting packages are attached to a GitHub Release.
 
@@ -8,8 +15,12 @@ The kernel is built automatically by GitHub Actions on a free arm64 runner whene
 
 | package | contents |
 |---|---|
-| `linux-aarch64-rockchip-collabora` | `Image` (as `vmlinuz`), all Rockchip DTBs, modules |
+| `linux-aarch64-rockchip` (release track) | `Image` (as `vmlinuz`), all Rockchip DTBs, modules |
+| `linux-aarch64-rockchip-headers` | headers for out-of-tree module builds |
+| `linux-aarch64-rockchip-collabora` (dev track) | same contents, experimental tree |
 | `linux-aarch64-rockchip-collabora-headers` | headers for out-of-tree module builds |
+
+The two package names differ on purpose, so the stable and the development kernel can be installed side by side on one board (they use different `/usr/lib/modules/<kernver>` directories and `/boot/dtbs/<pkgbase>`).
 
 The NPU runs with devfreq at 200 MHz–1 GHz (OPP table + passive cooling included), and the driver carries the keep-attached IOMMU, batched-submit and IRQ/reset-path fixes from the rocket series. See the patch comments in the `PKGBUILD` for the full story.
 
@@ -37,35 +48,40 @@ A full build takes roughly 1–2 hours. Workflow artifacts are kept for 30 days;
 
 ## Branches, tags and releases
 
-Two lines of development, distinguished by tag suffix:
+Two tracks, distinguished by branch and tag suffix:
 
-| line | branch | tag | result |
+| track | branch | tag | result |
 |---|---|---|---|
-| release | `main` | `v<kernel-version>` (e.g. `v7.4rc3.6a63eca`) | full GitHub Release ("latest") |
-| development | `dev` | `v<kernel-version>-dev` (e.g. `v7.5rc1.abc1234-dev`) | **pre-release** build |
+| release | `main` | `v<kernel-version>` (e.g. `v7.3.5`) | full GitHub Release ("latest") |
+| development | `dev` | `v<kernel-version>-dev` (e.g. `v7.4rc3.6a63eca-dev`) | **pre-release** build |
 
-**Dev build:** work on the `dev` branch, then:
+**Dev build:** work on the `dev` branch (its PKGBUILD pins the Collabora tree), then:
 
 ```sh
-git add -A
-git commit -m "kernel 7.5-rc1 at <commit>"
-git tag v7.5rc1.<shortsha>-dev
+git checkout dev
+# ... edit PKGBUILD _commit/_gittag if bumping the development kernel ...
+git add -A && git commit -m "kernel 7.4-rc3 at <commit>"
+git tag v7.4rc3.<shortsha>-dev
 git push origin dev --tags
 ```
 
-**Release:** once a dev build is validated on the board, fast-forward `main` to the same commit and tag it without the `-dev` suffix:
+**Release build:** the `main` PKGBUILD follows the kernel.org **stable** series. To follow a new stable release, change `_gittag` only (e.g. `v7.3.6`), commit on `main`, and tag:
 
 ```sh
-git checkout main && git merge --ff-only dev
-git tag v7.5rc1.<shortsha>
+git checkout main
+# edit PKGBUILD: _gittag='v7.3.6'
+git add PKGBUILD && git commit -m "kernel 7.3.6"
+git tag v7.3.6
 git push origin main --tags
 ```
 
-The release build re-runs and publishes the full release, which becomes "latest"; the dev pre-release stays available separately.
+The two PKGBUILDs intentionally differ (stable tarball vs. Collabora tree), so promotion from dev to release is a **version bump on `main`**, not a branch merge: a development kernel reaches the release track when its features have landed in a mainline stable release (the NPU stack did exactly that in 7.3). If you cherry-pick from `dev` to `main`, expect conflicts in `PKGBUILD` and keep main's stable-source block.
 
-**What to edit when bumping the kernel version:** set `_commit` (the exact collabora tree commit) and `_gittag` (the upstream tag it is based on, e.g. `v7.5-rc1`) in `PKGBUILD`, and update the patch series if the new tree needs different patches.
+**What to edit when bumping the kernel version:**
+- release track (`main`): `_gittag` in `PKGBUILD` — that is all, the rocket stack follows automatically;
+- dev track (`dev`): `_commit` (exact Collabora tree commit) and `_gittag` (upstream tag it is based on), plus the patch series if the new tree needs different patches.
 
-The git source checksum is `SKIP` (the `#commit=` pin already fixes the exact tree). If you want pacman-grade content pinning for the kernel source too, run `updpkgsums` after changing `_commit` — but note it downloads the whole kernel history to compute the hash.
+The git source checksum is `SKIP` (the `#tag=`/`#commit=` pin already fixes the exact tree). If you want pacman-grade content pinning for the kernel source too, run `updpkgsums` after changing the pin — but note it downloads the whole kernel history to compute the hash.
 
 ## Building locally
 

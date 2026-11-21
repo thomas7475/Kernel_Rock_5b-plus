@@ -1,36 +1,41 @@
 # Maintainer: Thomas <you@example.com>
 # Contributor: 7Ji <pugokughin@gmail.com> (for the original PKGBUILD)
 #
-# Arch Linux ARM (aarch64) kernel for the Radxa ROCK 5B+ (RK3588), built from
-# Collabora's hardware-enablement tree with the rocket NPU patch stack.
-# Built automatically by GitHub Actions on an arm64 runner when a v* tag is
-# pushed -- see .github/workflows/build-kernel.yml.
+# Arch Linux ARM (aarch64) kernel for the Radxa ROCK 5B+ (RK3588).
+# Two tracks share this repo and the same workflow (see
+# .github/workflows/build-kernel.yml); only the PKGBUILD differs:
+#
+#   main (this file): mainline STABLE kernel from kernel.org (git.kernel.org
+#     stable tree) + the rocket NPU patch stack. Built by v<version> tags,
+#     published as a full release.
+#   dev: the development PKGBUILD -- Collabora's rockchip-devel tree
+#     (v7.4-rc3 based, experimental). Built by <version>-dev tags,
+#     published as a pre-release.
+#
+# The rocket NPU base driver has been part of mainline since 7.3
+# (drivers/accel/rocket), and mainline 7.3 ships the
+# rk3588-rock-5b-plus.dts board description, so the stable track carries
+# the same NPU stack as the dev track.
 
-_desc="mainline kernel for Rockchip rk3588 with custom patches"
+_desc="stable kernel for Rockchip rk3588 with rocket NPU patches"
 
-pkgbase=linux-aarch64-rockchip-collabora
+pkgbase=linux-aarch64-rockchip
 pkgname=(
   "${pkgbase}"
   "${pkgbase}-headers"
 )
 
 # --- USER CONFIGURATION: START ---
-#_commit='d0829c6423d74e7e20a8f547709671fdf355335a' # 6.19 collabora
-#_commit='7c94261a67f7cbf1127e48bf3d2c2467e8b7a9de' # 7.2 collabora
-#_commit='ecfd700eba45f9c1ad387a69275c8b39d7603809' # 7.3-rc7 collabora
-#_commit='b43675945779c33b0fc93645152e62735774f3c2' # 7.3 collabora (rockchip-release)
-
-# collabora "rockchip-devel" branch tip as of 2026-11-21, v7.4-rc3 based.
-# The rocket patch series below was verified to apply to this exact commit
-# under strict git am (18/18: 15 local patches + 3 downloaded originals).
-_commit='6a63eca42acab19f062c5ad420f869c31effe47b'
-
-_gittag='v7.4-rc3'
-url="https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git"
+# Release track: a mainline stable release from kernel.org. The git source
+# keeps prepare()'s `git am` patch machinery unchanged, and stable tags are
+# immutable, so #tag= pins the content exactly (a tagged checkout also
+# yields a clean "x.y.z" version string with CONFIG_LOCALVERSION_AUTO=y).
+# To follow a new stable release, change _gittag only.
+_gittag='v7.3.5'
+_stable_url="https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
 # --- USER CONFIGURATION: END ---
 
-_pkgver_sanitized=$(echo "${_gittag}" | sed -e 's/^v//' -e 's/-rc/rc/')
-pkgver=${_pkgver_sanitized}.${_commit::7}
+pkgver=${_gittag#v}
 
 pkgrel=1
 arch=('aarch64')
@@ -42,8 +47,8 @@ options=(!strip)
 
 _srcname="linux"
 
-# Rocket NPU stack for the RK3588, 7.4-rc3 edition (18 patches, applied in
-# the order listed in prepare()).
+# Rocket NPU stack for the RK3588 (18 patches, applied in the order listed
+# in prepare(), identically on the stable and dev tracks).
 #
 # Patches that needed NO modification for this tree are DOWNLOADED straight
 # from their upstream home (github.com/gregordinary/patches, branch main);
@@ -68,7 +73,7 @@ _srcname="linux"
 #    three files from github.com/gregordinary/patches/tree/main/rocket and
 #    replace the three https:// entries below with their file names.
 source=(
-  "${_srcname}::git+${url}#commit=${_commit}"
+  "${_srcname}::git+${_stable_url}#tag=${_gittag}"
   'config'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/086-rocket-drv-batched-submit.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/091-rocket-drv-irq-sync-before-reset.patch'
@@ -81,7 +86,7 @@ source=(
 #  ever changes, regenerate with: sha256sum patches/*.patch
 
 # The git source supports pacman's content pinning (checksum of the
-# deterministic git-archive export). After changing _commit, regenerate all
+# deterministic git-archive export). After changing _gittag, regenerate all
 # sums with `updpkgsums` (the 'SKIP' below only spares the regeneration
 # until then); everything else is pinned to the verified content.
 sha256sums=('SKIP'
