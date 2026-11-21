@@ -36,12 +36,16 @@ url="https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git"
 _pkgver_sanitized=$(echo "${_gittag}" | sed -e 's/^v//' -e 's/-rc/rc/')
 pkgver=${_pkgver_sanitized}.${_commit::7}
 
-pkgrel=1
+pkgrel=2
 arch=('aarch64')
 license=('GPL2')
 # pahole is the current Arch/ALARM package name (renamed from 'dwarves');
-# rust + rust-bindgen are needed because the config sets CONFIG_RUST=y.
-makedepends=('git' 'kmod' 'bc' 'dtc' 'uboot-tools' 'pahole' 'python' 'rust' 'rust-bindgen')
+# rust + rust-bindgen + rust-src are needed because the config sets
+# CONFIG_RUST=y: ALARM splits the Rust standard-library sources into the
+# separate 'rust-src' package, and without them scripts/rust_is_available.sh
+# fails, which makes olddefconfig silently drop CONFIG_RUST (the pkgrel=1
+# packages shipped no Rust artifacts at all because of exactly that).
+makedepends=('git' 'kmod' 'bc' 'dtc' 'uboot-tools' 'pahole' 'python' 'rust' 'rust-bindgen' 'rust-src')
 options=(!strip)
 
 _srcname="linux"
@@ -246,7 +250,8 @@ _package-headers() {
   cp -t "${_builddir}/arch/arm64" -a arch/arm64/include
   install -Dt "${_builddir}/arch/arm64/kernel" -m644 arch/arm64/kernel/asm-offsets.s
   if [ -d rust ]; then
-    echo "Installing Rust artifacts..."
+    echo "Installing Rust artifacts (full build dir: libmacros.so,"
+    echo "target.json, generated sources, prebuilt crate objects)..."
     cp -t "${_builddir}" -a rust
   fi
 
@@ -278,7 +283,9 @@ _package-headers() {
   # Documentation/Kconfig* into it; guard against a tree without those files.
   rm -rf "${_builddir}/Documentation"
   find -L "${_builddir}" -type l -delete
-  find "${_builddir}" -type f -name '*.o' -delete
+  # Keep rust/*.o: the prebuilt crate objects (kernel.o, bindings.o, ...)
+  # are required for out-of-tree/DKMS Rust module builds.
+  find "${_builddir}" -type f -name '*.o' -not -path "${_builddir}/rust/*" -delete
 
   echo "Stripping build tools..."
   local file
@@ -289,7 +296,11 @@ _package-headers() {
       application/x-executable\;*) strip -v ${STRIP_BINARIES} "$file" ;;
       application/x-pie-executable\;*) strip -v ${STRIP_SHARED} "$file" ;;
     esac
-  done < <(find "${_builddir}" -type f -perm -u+x ! -name vmlinux -print0)
+  # Never strip anything under rust/: libmacros.so is a host proc-macro
+  # dylib that rustc dlopen()s during (DKMS) module builds -- stripping it
+  # can break that.
+  done < <(find "${_builddir}" -type f -perm -u+x ! -name vmlinux \
+           -not -path "${_builddir}/rust/*" -print0)
 
   strip -v $STRIP_STATIC "${_builddir}/vmlinux"
 
