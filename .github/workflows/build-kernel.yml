@@ -126,6 +126,11 @@ jobs:
               # never match the *.pkg.tar.zst patterns), and a pacman-updated
               # makepkg.conf / makepkg.conf.d fragment could set PKGDEST
               # inside the discarded container.
+              # The rolling rootfs is a moving target: a newer snapshot may
+              # move or drop /etc/makepkg.conf entirely (run 6 died here).
+              # Ensure both targets exist before pinning; makepkg is fine
+              # with an empty makepkg.conf.
+              touch /etc/makepkg.conf
               sed -i "s|^#*PKGDEST=.*|PKGDEST=\"/repo\"|" /etc/makepkg.conf
               grep -q "^PKGDEST=" /etc/makepkg.conf || echo "PKGDEST=\"/repo\"" >> /etc/makepkg.conf
               sed -i "s|^#*PKGEXT=.*|PKGEXT=\".pkg.tar.zst\"|" /etc/makepkg.conf
