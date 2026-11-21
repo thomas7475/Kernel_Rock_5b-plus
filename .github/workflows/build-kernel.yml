@@ -75,6 +75,11 @@ jobs:
           # building, so the container layer is thrown away afterwards.
           docker run --rm -v "$GITHUB_WORKSPACE:/repo" -w /repo \
             alarm-builder:latest bash -euxc '
+              # pacman 7 confines itself with a Landlock ruleset and drops to
+              # the "alpm" sandbox user; Docker seccomp blocks the Landlock
+              # syscalls, so disable the sandbox inside this container.
+              grep -q "^DisableSandbox" /etc/pacman.conf \
+                || sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
               # Refresh the keyring first so signature checks keep passing
               # on a rootfs snapshot that may be a few months old.
               pacman -Sy --noconfirm archlinuxarm-keyring || true
