@@ -4,10 +4,10 @@ Arch Linux ARM (aarch64) kernel packages for the **Radxa ROCK 5B+ (RK3588)**, bu
 
 | track | branch | kernel source | package |
 |---|---|---|---|
-| **release** | `main` | mainline **stable** from kernel.org (e.g. `v7.3.5`) | `linux-aarch64-rockchip` |
-| **development** | `dev` | [Collabora's rockchip-devel tree](https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git) (e.g. `v7.4-rc3` based) | `linux-aarch64-rockchip-collabora` |
+| **release** | `main` | [Collabora rockchip-**release** tree](https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git), 7.3-based (commit `b436759`) | `linux-aarch64-rockchip` |
+| **development** | `dev` | [Collabora rockchip-**devel** tree](https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git), v7.4-rc3-based (commit `6a63eca`) | `linux-aarch64-rockchip-collabora` |
 
-The rocket NPU base driver has been part of mainline since 7.3 (`drivers/accel/rocket`), and mainline 7.3 ships the `rk3588-rock-5b-plus.dts` board description — so the stable track carries the same NPU stack as the development track, on a kernel that only contains released, reviewed code.
+Both tracks build from the same Collabora hardware-enablement repository — the release track follows the validated `rockchip-release` line, the development track the fast-moving `rockchip-devel` line — and both carry the identical rocket NPU patch stack, with the pinning and packaging machinery shared between them.
 
 The kernel is built automatically by GitHub Actions on a free arm64 runner whenever a tag is pushed; the resulting packages are attached to a GitHub Release.
 
@@ -52,10 +52,10 @@ Two tracks, distinguished by branch and tag suffix:
 
 | track | branch | tag | result |
 |---|---|---|---|
-| release | `main` | `v<kernel-version>` (e.g. `v7.3.5`) | full GitHub Release ("latest") |
+| release | `main` | `v<kernel-version>` (e.g. `v7.3.b436759`) | full GitHub Release ("latest") |
 | development | `dev` | `v<kernel-version>-dev` (e.g. `v7.4rc3.6a63eca-dev`) | **pre-release** build |
 
-**Dev build:** work on the `dev` branch (its PKGBUILD pins the Collabora tree), then:
+**Dev build:** work on the `dev` branch (its PKGBUILD pins the Collabora rockchip-**devel** tree), then:
 
 ```sh
 git checkout dev
@@ -65,23 +65,23 @@ git tag v7.4rc3.<shortsha>-dev
 git push origin dev --tags
 ```
 
-**Release build:** the `main` PKGBUILD follows the kernel.org **stable** series. To follow a new stable release, change `_gittag` only (e.g. `v7.3.6`), commit on `main`, and tag:
+**Release build:** the `main` PKGBUILD follows the Collabora rockchip-**release** tree. When Collabora publishes a new release state (e.g. a 7.4-based `rockchip-release`), change `_commit` (and `_gittag`) on `main`, commit, and tag:
 
 ```sh
 git checkout main
-# edit PKGBUILD: _gittag='v7.3.6'
-git add PKGBUILD && git commit -m "kernel 7.3.6"
-git tag v7.3.6
+# edit PKGBUILD: _commit='<new rockchip-release sha>' / _gittag='v7.4'
+git add PKGBUILD && git commit -m "kernel 7.4 at <commit>"
+git tag v7.4.<shortsha>
 git push origin main --tags
 ```
 
-The two PKGBUILDs intentionally differ (stable tarball vs. Collabora tree), so promotion from dev to release is a **version bump on `main`**, not a branch merge: a development kernel reaches the release track when its features have landed in a mainline stable release (the NPU stack did exactly that in 7.3). If you cherry-pick from `dev` to `main`, expect conflicts in `PKGBUILD` and keep main's stable-source block.
+The two PKGBUILDs intentionally differ (release line vs. devel line), so promotion from dev to release is a **version bump on `main`**, not a branch merge: a development kernel reaches the release track when Collabora ships the corresponding `rockchip-release` state to pin. If you cherry-pick from `dev` to `main`, expect conflicts in the PKGBUILD's user-configuration block and keep main's release-tree pin.
 
 **What to edit when bumping the kernel version:**
-- release track (`main`): `_gittag` in `PKGBUILD` — that is all, the rocket stack follows automatically;
-- dev track (`dev`): `_commit` (exact Collabora tree commit) and `_gittag` (upstream tag it is based on), plus the patch series if the new tree needs different patches.
+- release track (`main`): `_commit` (exact rockchip-release tree commit) and `_gittag` (the mainline version it is based on, e.g. `v7.3`);
+- dev track (`dev`): `_commit` (exact rockchip-devel tree commit) and `_gittag` (e.g. `v7.5-rc1`), plus the patch series if the new tree needs different patches.
 
-The git source checksum is `SKIP` (the `#tag=`/`#commit=` pin already fixes the exact tree). If you want pacman-grade content pinning for the kernel source too, run `updpkgsums` after changing the pin — but note it downloads the whole kernel history to compute the hash.
+The git source checksum is `SKIP` (the `#commit=` pin already fixes the exact tree). If you want pacman-grade content pinning for the kernel source too, run `updpkgsums` after changing `_commit` — but note it downloads the whole kernel history to compute the hash.
 
 ## Building locally
 

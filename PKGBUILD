@@ -2,22 +2,18 @@
 # Contributor: 7Ji <pugokughin@gmail.com> (for the original PKGBUILD)
 #
 # Arch Linux ARM (aarch64) kernel for the Radxa ROCK 5B+ (RK3588).
-# Two tracks share this repo and the same workflow (see
-# .github/workflows/build-kernel.yml); only the PKGBUILD differs:
+# Two tracks share this repo, the same Collabora hardware-enablement tree
+# (https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git),
+# the same workflow (.github/workflows/build-kernel.yml) and the same rocket
+# NPU patch stack; only the PKGBUILD's configuration block differs:
 #
-#   main (this file): mainline STABLE kernel from kernel.org (git.kernel.org
-#     stable tree) + the rocket NPU patch stack. Built by v<version> tags,
-#     published as a full release.
-#   dev: the development PKGBUILD -- Collabora's rockchip-devel tree
-#     (v7.4-rc3 based, experimental). Built by <version>-dev tags,
-#     published as a pre-release.
-#
-# The rocket NPU base driver has been part of mainline since 7.3
-# (drivers/accel/rocket), and mainline 7.3 ships the
-# rk3588-rock-5b-plus.dts board description, so the stable track carries
-# the same NPU stack as the dev track.
+#   main (this file): the rockchip-RELEASE line -- the 7.3-based collabora
+#     tree, intended as the stable/validated kernel. Built by v<version>
+#     tags, published as a full release.
+#   dev: the rockchip-DEVEL line -- the v7.4-rc3-based tree (experimental).
+#     Built by <version>-dev tags, published as a pre-release.
 
-_desc="stable kernel for Rockchip rk3588 with rocket NPU patches"
+_desc="collabora rockchip-release kernel (7.3) for Rockchip rk3588 with rocket NPU patches"
 
 pkgbase=linux-aarch64-rockchip
 pkgname=(
@@ -26,16 +22,19 @@ pkgname=(
 )
 
 # --- USER CONFIGURATION: START ---
-# Release track: a mainline stable release from kernel.org. The git source
-# keeps prepare()'s `git am` patch machinery unchanged, and stable tags are
-# immutable, so #tag= pins the content exactly (a tagged checkout also
-# yields a clean "x.y.z" version string with CONFIG_LOCALVERSION_AUTO=y).
-# To follow a new stable release, change _gittag only.
-_gittag='v7.3.5'
-_stable_url="https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"
+# Release track: collabora's rockchip-release branch, pinned to its 7.3
+# state (the branch tip as of 2026-11-21). The rocket patch series below
+# was prepared against this tree during the compatibility analysis:
+# kernel 7.3 already carries DVFS-series patches 01/11 and 03/11, which
+# the stack therefore excludes.
+_commit='b43675945779c33b0fc93645152e62735774f3c2' # 7.3 collabora (rockchip-release tip)
+
+_gittag='v7.3'
+url="https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git"
 # --- USER CONFIGURATION: END ---
 
-pkgver=${_gittag#v}
+_pkgver_sanitized=$(echo "${_gittag}" | sed -e 's/^v//' -e 's/-rc/rc/')
+pkgver=${_pkgver_sanitized}.${_commit::7}
 
 pkgrel=1
 arch=('aarch64')
@@ -48,7 +47,7 @@ options=(!strip)
 _srcname="linux"
 
 # Rocket NPU stack for the RK3588 (18 patches, applied in the order listed
-# in prepare(), identically on the stable and dev tracks).
+# in prepare(), identically on the release and dev tracks).
 #
 # Patches that needed NO modification for this tree are DOWNLOADED straight
 # from their upstream home (github.com/gregordinary/patches, branch main);
@@ -64,7 +63,7 @@ _srcname="linux"
 #  - 090, 091, 094, 095, 098 (local, adapted): gregordinary patches rebased
 #    onto the DVFS series (same files as the 7.3 edition).
 #  - 092 (local, reworked): gregordinary's extensible-uAPI patch, reworked
-#    for 7.4-rc3's in-tree regcmd validation (ROCKET_MAX_REGCMDS /
+#    for the in-tree regcmd validation (ROCKET_MAX_REGCMDS /
 #    ROCKET_REGCMD_ALIGN now live where its hunks used to land; both are
 #    kept, and the validation still runs on every copied task).
 #  - downloaded: batched-submit, irq-sync-before-reset and ppu-completion
@@ -73,7 +72,7 @@ _srcname="linux"
 #    three files from github.com/gregordinary/patches/tree/main/rocket and
 #    replace the three https:// entries below with their file names.
 source=(
-  "${_srcname}::git+${_stable_url}#tag=${_gittag}"
+  "${_srcname}::git+${url}#commit=${_commit}"
   'config'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/086-rocket-drv-batched-submit.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/091-rocket-drv-irq-sync-before-reset.patch'
@@ -86,7 +85,7 @@ source=(
 #  ever changes, regenerate with: sha256sum patches/*.patch
 
 # The git source supports pacman's content pinning (checksum of the
-# deterministic git-archive export). After changing _gittag, regenerate all
+# deterministic git-archive export). After changing _commit, regenerate all
 # sums with `updpkgsums` (the 'SKIP' below only spares the regeneration
 # until then); everything else is pinned to the verified content.
 sha256sums=('SKIP'
@@ -138,7 +137,7 @@ prepare() {
   echo "All ${#_pinned_sums[@]} carried patches match their pinned sha256."
 
   # --- APPLY ROCKET PATCHES (mbox; verified to apply at the pinned commit) ---
-  # Slot order for the 7.4-rc3 stack; the three marked "downloaded" are the
+  # Slot order for the 7.3 stack; the three marked "downloaded" are the
   # unmodified upstream files fetched via the https:// source entries.
   local _rocket_patches=(
     '081-rocket-dvfs-number-cores-by-devicetree-position.patch'
