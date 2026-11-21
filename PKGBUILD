@@ -3,8 +3,9 @@
 #
 # Arch Linux ARM (aarch64) kernel for the Radxa ROCK 5B+ (RK3588), built from
 # Collabora's hardware-enablement tree with the rocket NPU patch stack.
-# Built automatically by GitHub Actions on an arm64 runner when a v* tag is
-# pushed -- see .github/workflows/build-kernel.yml.
+# Built automatically by GitHub Actions on an arm64 runner when a tag is
+# pushed (release: v<version> on main; dev: <version>-dev, published as a
+# pre-release) -- see .github/workflows/build-kernel.yml.
 
 _desc="mainline kernel for Rockchip rk3588 with custom patches"
 
@@ -48,7 +49,7 @@ _srcname="linux"
 # Patches that needed NO modification for this tree are DOWNLOADED straight
 # from their upstream home (github.com/gregordinary/patches, branch main);
 # only patches that had to be adapted or reworked are kept in this
-# repository (the 15 *.patch files next to this PKGBUILD):
+# repository (the 15 *.patch files in the patches/ subdirectory):
 #
 #  - 081-089 (local, unchanged): Igor Paunovic's DVFS series "[PATCH v2
 #    00/11] accel/rocket: DVFS for the RK3588 NPU" (dri-devel, 2026-09-22),
@@ -70,21 +71,21 @@ _srcname="linux"
 source=(
   "${_srcname}::git+${url}#commit=${_commit}"
   'config'
-  '081-rocket-dvfs-number-cores-by-devicetree-position.patch'
-  '082-rocket-dvfs-keep-core-slots-stable-across-unbind.patch'
-  '083-rocket-dvfs-request-the-core-clocks-by-name.patch'
-  '084-rocket-dvfs-bindings-allow-dvfs-and-thermal.patch'
-  '085-rocket-dvfs-dts-add-an-opp-table-for-the-npu.patch'
-  '086-rocket-dvfs-restore-the-npu-clock-boot-rate.patch'
-  '087-rocket-dvfs-add-devfreq-support.patch'
-  '088-rocket-dvfs-register-a-devfreq-cooling-device.patch'
-  '089-rocket-dvfs-dts-add-passive-cooling.patch'
-  '090-rocket-drv-iommu-keepattach.patch'
-  '091-rocket-drv-fix-bo-mm-uaf.patch'
-  '092-rocket-drv-uapi-extensible-structs.patch'
-  '094-rocket-drv-reset-before-iommu-detach.patch'
-  '095-rocket-drv-irq-under-job-lock.patch'
-  '098-rocket-drv-suspend-after-reset.patch'
+  'patches/081-rocket-dvfs-number-cores-by-devicetree-position.patch'
+  'patches/082-rocket-dvfs-keep-core-slots-stable-across-unbind.patch'
+  'patches/083-rocket-dvfs-request-the-core-clocks-by-name.patch'
+  'patches/084-rocket-dvfs-bindings-allow-dvfs-and-thermal.patch'
+  'patches/085-rocket-dvfs-dts-add-an-opp-table-for-the-npu.patch'
+  'patches/086-rocket-dvfs-restore-the-npu-clock-boot-rate.patch'
+  'patches/087-rocket-dvfs-add-devfreq-support.patch'
+  'patches/088-rocket-dvfs-register-a-devfreq-cooling-device.patch'
+  'patches/089-rocket-dvfs-dts-add-passive-cooling.patch'
+  'patches/090-rocket-drv-iommu-keepattach.patch'
+  'patches/091-rocket-drv-fix-bo-mm-uaf.patch'
+  'patches/092-rocket-drv-uapi-extensible-structs.patch'
+  'patches/094-rocket-drv-reset-before-iommu-detach.patch'
+  'patches/095-rocket-drv-irq-under-job-lock.patch'
+  'patches/098-rocket-drv-suspend-after-reset.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/086-rocket-drv-batched-submit.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/091-rocket-drv-irq-sync-before-reset.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/093-rocket-drv-ppu-completion.patch'
@@ -122,6 +123,13 @@ prepare() {
   # nothing is needed to keep '+' out of the release string: the tree stays
   # clean because git am commits the patches, and the '-g<sha>' suffix is
   # governed by CONFIG_LOCALVERSION_AUTO in the config.
+
+  # Stage the local patches into srcdir at a known path: makepkg stages
+  # "patches/xxx.patch" source entries either flattened to the basename
+  # or under the subdirectory depending on the pacman version, so do not
+  # rely on its staging here.
+  mkdir -p "${srcdir}/patches"
+  cp -a "${startdir}/patches/." "${srcdir}/patches/"
 
   # --- APPLY ROCKET PATCHES (mbox; verified to apply at the pinned commit) ---
   # Slot order for the 7.4-rc3 stack; the three marked "downloaded" are the

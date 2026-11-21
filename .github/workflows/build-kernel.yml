@@ -121,16 +121,33 @@ jobs:
               id builder >/dev/null 2>&1 || useradd -m builder
               chown -R builder:builder /repo
               export MAKEFLAGS="-j$(nproc)"
+              # Pin the package output directory: newer pacman snapshots may
+              # set PKGDEST in /etc/makepkg.conf or in /etc/makepkg.conf.d
+              # fragments, which would leave the finished packages inside
+              # the discarded container instead of on the workspace.
+              sed -i "s|^#*PKGDEST=.*|PKGDEST=\"/repo\"|" /etc/makepkg.conf
+              grep -q "^PKGDEST=" /etc/makepkg.conf || echo "PKGDEST=\"/repo\"" >> /etc/makepkg.conf
+              [ ! -d /etc/makepkg.conf.d ] || grep -rl PKGDEST /etc/makepkg.conf.d/ 2>/dev/null | xargs -r sed -i "s|^#*PKGDEST=.*|PKGDEST=\"/repo\"|"
+              export PKGDEST=/repo
               runuser -u builder -- makepkg -f --noconfirm
+              # Safety net: copy any package that landed outside /repo
+              # (e.g. via a config fragment) onto the mounted workspace
+              # before the container exits.
+              find / -xdev -name "*.pkg.tar.zst" -not -path "/repo/*" \
+                -not -path "/var/cache/*" -exec cp -v {} /repo/ \;
             '
 
       - name: Collect packages and checksums
         run: |
           mkdir -p dist
-          cp -v "$GITHUB_WORKSPACE"/*.pkg.tar.zst dist/
+          find "$GITHUB_WORKSPACE" -maxdepth 2 -name "*.pkg.tar.zst" \
+            -exec cp -v {} dist/ \;
           cd dist
+          echo "== artifacts found in workspace =="
+          ls -la
+          n=$(find . -maxdepth 1 -name "*.pkg.tar.zst" | wc -l)
+          [ "$n" -eq 2 ] || { echo "ERROR: expected exactly 2 packages, found $n"; exit 1; }
           sha256sum *.pkg.tar.zst > SHA256SUMS
-          echo "== artifacts =="
           cat SHA256SUMS
 
       - name: Upload packages as workflow artifact

@@ -18,12 +18,12 @@ The NPU runs with devfreq at 200 MHz–1 GHz (OPP table + passive cooling includ
 ```
 PKGBUILD                        the package recipe (pin, sources, packaging)
 config                          kernel .config (CONFIG_RUST=y, aarch64)
-08x-rocket-*.patch              the 15 patches that needed adaptation for this
+patches/                        the 15 patches that needed adaptation for this
                                 tree (DVFS series + reworked gregordinary patches)
 .github/workflows/build-kernel.yml   CI: tag -> arm64 build -> Release
 ```
 
-Three more patches (batched-submit, irq-sync, ppu-completion) apply to this tree **unmodified** and are downloaded at build time straight from `github.com/gregordinary/patches` — that is why they are not in this repository.
+Three more patches (batched-submit, irq-sync, ppu-completion) apply to this tree **unmodified** and are downloaded at build time straight from `github.com/gregordinary/patches` — that is why they are not in the `patches/` directory.
 
 ## How the CI build works
 
