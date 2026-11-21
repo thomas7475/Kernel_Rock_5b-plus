@@ -3,9 +3,8 @@
 #
 # Arch Linux ARM (aarch64) kernel for the Radxa ROCK 5B+ (RK3588), built from
 # Collabora's hardware-enablement tree with the rocket NPU patch stack.
-# Built automatically by GitHub Actions on an arm64 runner when a tag is
-# pushed (release: v<version> on main; dev: <version>-dev, published as a
-# pre-release) -- see .github/workflows/build-kernel.yml.
+# Built automatically by GitHub Actions on an arm64 runner when a v* tag is
+# pushed -- see .github/workflows/build-kernel.yml.
 
 _desc="mainline kernel for Rockchip rk3588 with custom patches"
 
@@ -49,7 +48,7 @@ _srcname="linux"
 # Patches that needed NO modification for this tree are DOWNLOADED straight
 # from their upstream home (github.com/gregordinary/patches, branch main);
 # only patches that had to be adapted or reworked are kept in this
-# repository (the 15 *.patch files in the patches/ subdirectory):
+# repository (the 15 *.patch files next to this PKGBUILD):
 #
 #  - 081-089 (local, unchanged): Igor Paunovic's DVFS series "[PATCH v2
 #    00/11] accel/rocket: DVFS for the RK3588 NPU" (dri-devel, 2026-09-22),
@@ -71,25 +70,15 @@ _srcname="linux"
 source=(
   "${_srcname}::git+${url}#commit=${_commit}"
   'config'
-  'patches/081-rocket-dvfs-number-cores-by-devicetree-position.patch'
-  'patches/082-rocket-dvfs-keep-core-slots-stable-across-unbind.patch'
-  'patches/083-rocket-dvfs-request-the-core-clocks-by-name.patch'
-  'patches/084-rocket-dvfs-bindings-allow-dvfs-and-thermal.patch'
-  'patches/085-rocket-dvfs-dts-add-an-opp-table-for-the-npu.patch'
-  'patches/086-rocket-dvfs-restore-the-npu-clock-boot-rate.patch'
-  'patches/087-rocket-dvfs-add-devfreq-support.patch'
-  'patches/088-rocket-dvfs-register-a-devfreq-cooling-device.patch'
-  'patches/089-rocket-dvfs-dts-add-passive-cooling.patch'
-  'patches/090-rocket-drv-iommu-keepattach.patch'
-  'patches/091-rocket-drv-fix-bo-mm-uaf.patch'
-  'patches/092-rocket-drv-uapi-extensible-structs.patch'
-  'patches/094-rocket-drv-reset-before-iommu-detach.patch'
-  'patches/095-rocket-drv-irq-under-job-lock.patch'
-  'patches/098-rocket-drv-suspend-after-reset.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/086-rocket-drv-batched-submit.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/091-rocket-drv-irq-sync-before-reset.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/093-rocket-drv-ppu-completion.patch'
 )
+
+#  The carried patches live in patches/, outside makepkg's build
+#  directory, so sha256sums cannot cover them; prepare() verifies each
+#  against _pinned_sums before applying anything. If a carried patch
+#  ever changes, regenerate with: sha256sum patches/*.patch
 
 # The git source supports pacman's content pinning (checksum of the
 # deterministic git-archive export). After changing _commit, regenerate all
@@ -97,21 +86,6 @@ source=(
 # until then); everything else is pinned to the verified content.
 sha256sums=('SKIP'
             '793121219855e49d310ddf54300ebdb6a927034b6b9a211069ae03512f503692'
-            '7fbdeec39b16f73b635141f448090959f8efa5ebd2473be4b49555fffbdbc7b7'
-            '4adc1be4f7f9d4bc8f56f1a270691732317fddb22517469df5e171086ea9b13d'
-            'c3157c8afd01671e7ed241519d3b30c369f342e12b0237c64064868963d3dea6'
-            '93f186153a88609116cf02b73e3f6555adc2e130d15078d0b8bebb7af2829a7c'
-            'c81c9038a6d9aad1301b25fe1924008db7d9449054312c87e5758b552a69e8e9'
-            'aae0fcfef6e7b7a4fe30344daee5a3de4e855a4759ba3370c6d2bf7ce7c7015d'
-            '0b3a7b5e8396d3dd5cb27aa6096cdedc5ea5cbe577a9b02f0b33eb6d39260583'
-            'a17a99af78a7ae00bf99cd00a2e61ad13370e5ea62df25bdc5c1cdf112f7ad6c'
-            'd8eab548bade5317d23cc17a6778c2990c4417c80fbd86b6fa042b90c4a328d9'
-            '1325fedadc75af79efa5a63d5a87f74a90f663f424ab3c8cc8ef24689074517d'
-            'a1c056110ecd67604ba5fc4a0e0b260a374f30ddeaaeee87a008cc1473415424'
-            '5d02599ef53b6f7dd33c3658662be65428a365bf3c0474a913f81884d5815edd'
-            '4a5f59e13a80ba587b5555c90bbefbd110c9b0b5efd40f1375a60e33eb8a8645'
-            'bdec11000dd9b1e76e25fe1ac8206cfc2d163da5cfd93bdca7191f922eaa0dde'
-            '69c621cf678f5e6abe6ed7a73b31540bc0fe669efc2e381fdc838766c0af8b8b'
             'cd318ae62ed5c2f183df90e27cbdc2982a62e3f621a8c1fe66f48d33ad328f61'
             'f1d7178645b5104d9b9d6765e7d75febf1b2adb771478e43e3e41ecbb76e87a8'
             '14c331c05ff3eac4c97de479565e3de76a79c504cd46c3a666548935831e9851')
@@ -124,12 +98,39 @@ prepare() {
   # clean because git am commits the patches, and the '-g<sha>' suffix is
   # governed by CONFIG_LOCALVERSION_AUTO in the config.
 
-  # Stage the local patches into srcdir at a known path: makepkg stages
-  # "patches/xxx.patch" source entries either flattened to the basename
-  # or under the subdirectory depending on the pacman version, so do not
-  # rely on its staging here.
-  mkdir -p "${srcdir}/patches"
-  cp -a "${startdir}/patches/." "${srcdir}/patches/"
+  # --- CONTENT-PIN THE CARRIED PATCHES ---
+  # The 15 carried patches live in patches/, outside makepkg's build
+  # directory, so sha256sums cannot cover them; verify each one here
+  # before applying anything.
+  local _pinned_sums=(
+    '7fbdeec39b16f73b635141f448090959f8efa5ebd2473be4b49555fffbdbc7b7 patches/081-rocket-dvfs-number-cores-by-devicetree-position.patch'
+    '4adc1be4f7f9d4bc8f56f1a270691732317fddb22517469df5e171086ea9b13d patches/082-rocket-dvfs-keep-core-slots-stable-across-unbind.patch'
+    'c3157c8afd01671e7ed241519d3b30c369f342e12b0237c64064868963d3dea6 patches/083-rocket-dvfs-request-the-core-clocks-by-name.patch'
+    '93f186153a88609116cf02b73e3f6555adc2e130d15078d0b8bebb7af2829a7c patches/084-rocket-dvfs-bindings-allow-dvfs-and-thermal.patch'
+    'c81c9038a6d9aad1301b25fe1924008db7d9449054312c87e5758b552a69e8e9 patches/085-rocket-dvfs-dts-add-an-opp-table-for-the-npu.patch'
+    'aae0fcfef6e7b7a4fe30344daee5a3de4e855a4759ba3370c6d2bf7ce7c7015d patches/086-rocket-dvfs-restore-the-npu-clock-boot-rate.patch'
+    '0b3a7b5e8396d3dd5cb27aa6096cdedc5ea5cbe577a9b02f0b33eb6d39260583 patches/087-rocket-dvfs-add-devfreq-support.patch'
+    'a17a99af78a7ae00bf99cd00a2e61ad13370e5ea62df25bdc5c1cdf112f7ad6c patches/088-rocket-dvfs-register-a-devfreq-cooling-device.patch'
+    'd8eab548bade5317d23cc17a6778c2990c4417c80fbd86b6fa042b90c4a328d9 patches/089-rocket-dvfs-dts-add-passive-cooling.patch'
+    '1325fedadc75af79efa5a63d5a87f74a90f663f424ab3c8cc8ef24689074517d patches/090-rocket-drv-iommu-keepattach.patch'
+    'a1c056110ecd67604ba5fc4a0e0b260a374f30ddeaaeee87a008cc1473415424 patches/091-rocket-drv-fix-bo-mm-uaf.patch'
+    '5d02599ef53b6f7dd33c3658662be65428a365bf3c0474a913f81884d5815edd patches/092-rocket-drv-uapi-extensible-structs.patch'
+    '4a5f59e13a80ba587b5555c90bbefbd110c9b0b5efd40f1375a60e33eb8a8645 patches/094-rocket-drv-reset-before-iommu-detach.patch'
+    'bdec11000dd9b1e76e25fe1ac8206cfc2d163da5cfd93bdca7191f922eaa0dde patches/095-rocket-drv-irq-under-job-lock.patch'
+    '69c621cf678f5e6abe6ed7a73b31540bc0fe669efc2e381fdc838766c0af8b8b patches/098-rocket-drv-suspend-after-reset.patch'
+  )
+  local _pinned_line _pinned_name _pinned_sum _pinned_actual
+  for _pinned_line in "${_pinned_sums[@]}"; do
+    _pinned_sum="${_pinned_line%% *}"
+    _pinned_name="${_pinned_line#* }"
+    _pinned_actual="$(sha256sum "${startdir}/${_pinned_name}")"
+    _pinned_actual="${_pinned_actual%% *}"
+    if [ "${_pinned_actual}" != "${_pinned_sum}" ]; then
+      echo "ERROR: sha256 mismatch for ${_pinned_name}: got ${_pinned_actual}, want ${_pinned_sum}"
+      exit 1
+    fi
+  done
+  echo "All ${#_pinned_sums[@]} carried patches match their pinned sha256."
 
   # --- APPLY ROCKET PATCHES (mbox; verified to apply at the pinned commit) ---
   # Slot order for the 7.4-rc3 stack; the three marked "downloaded" are the
@@ -154,10 +155,18 @@ prepare() {
     '093-rocket-drv-ppu-completion.patch'           # 097 slot (downloaded)
     '098-rocket-drv-suspend-after-reset.patch'
   )
+
   echo "Applying rocket NPU patch series (${#_rocket_patches[@]} patches)..."
   for _patch in "${_rocket_patches[@]}"; do
-    echo "Applying ${_patch}..."
-    git -c user.name='PKGBUILD' -c user.email='pkgbuild@localhost' am --3way "${srcdir}/${_patch}"
+    # Carried patches live in patches/ next to this PKGBUILD; the three
+    # downloaded ones are staged into srcdir by makepkg.
+    if [ -f "${startdir}/patches/${_patch}" ]; then
+      _pfile="${startdir}/patches/${_patch}"
+    else
+      _pfile="${srcdir}/${_patch}"
+    fi
+    echo "Applying ${_pfile}..."
+    git -c user.name='PKGBUILD' -c user.email='pkgbuild@localhost' am --3way "${_pfile}"
   done
 
   # --- SET KERNEL VERSION ---
