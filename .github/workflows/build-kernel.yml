@@ -80,13 +80,33 @@ jobs:
               # syscalls, so disable the sandbox inside this container.
               grep -q "^DisableSandbox" /etc/pacman.conf \
                 || sed -i "/^\[options\]/a DisableSandbox" /etc/pacman.conf
-              # Refresh the keyring first so signature checks keep passing
-              # on a rootfs snapshot that may be a few months old.
-              pacman -Sy --noconfirm archlinuxarm-keyring || true
-              pacman -Syu --noconfirm
-              # base-devel = the toolchain makepkg assumes (gcc, make, ...);
-              # the rest = the PKGBUILD makedepends + kernel build needs.
-              pacman -S --needed --noconfirm \
+
+              # docker import does not leave the pacman keyring in a usable
+              # state ("keyring is not writable"); regenerate it from the
+              # keyring data shipped in the rootfs.
+              rm -rf /etc/pacman.d/gnupg
+              pacman-key --init
+              pacman-key --populate archlinuxarm archlinux \
+                || pacman-key --populate archlinuxarm
+
+              # The ALARM mirrors occasionally stall mid-transfer; pacman
+              # keeps completed downloads in its cache, so retrying only
+              # re-fetches what is missing.
+              retry() {
+                for n in 1 2 3 4; do
+                  "$@" && return 0
+                  echo "== command failed, retry ${n}/4 in 15s =="
+                  sleep 15
+                done
+                return 1
+              }
+
+              # Bring the rootfs up to date and install the build
+              # dependencies. base-devel = the toolchain makepkg assumes
+              # (gcc, make, ...); the rest = the PKGBUILD makedepends +
+              # kernel build needs.
+              retry pacman -Syu --noconfirm
+              retry pacman -S --needed --noconfirm \
                 base-devel git kmod bc dtc uboot-tools pahole python \
                 rust rust-bindgen perl openssl libelf zstd
               pacman -Scc --noconfirm
