@@ -48,6 +48,13 @@ jobs:
       - name: Show runner info and free disk space
         run: |
           echo "== runner =="
+          uname -a
+          # This kernel must be compiled NATIVELY on aarch64 (the label
+          # ubuntu-24.04-arm maps to GitHub's native arm64 hosted runners);
+          # assert it so a misconfigured label can never produce cross-
+          # compiled or emulated builds.
+          [ "$(uname -m)" = "aarch64" ] \
+            || { echo "::error::runner is $(uname -m), not native aarch64"; exit 1; }
           nproc
           free -h
           echo "== disk before cleanup =="
@@ -104,16 +111,22 @@ jobs:
               # Bring the rootfs up to date and install the build
               # dependencies. base-devel = the toolchain makepkg assumes
               # (gcc, make, ...); the rest = the PKGBUILD makedepends +
-              # kernel build needs.
+              # kernel build needs. rust-src is the Rust standard-library
+              # sources: ALARM splits them out of the rust package, and
+              # without them scripts/rust_is_available.sh fails, which
+              # makes olddefconfig SILENTLY drop CONFIG_RUST=y (the build
+              # then succeeds but ships no Rust artifacts at all -- see
+              # the v7.3.b436759-1 / v7.4rc3.6a63eca-1 headers).
               retry pacman -Syu --noconfirm
               retry pacman -S --needed --noconfirm \
                 base-devel git kmod bc dtc uboot-tools pahole python \
-                rust rust-bindgen perl openssl libelf zstd
+                rust rust-src rust-bindgen perl openssl libelf zstd
               pacman -Scc --noconfirm
 
               echo "== toolchain =="
               gcc --version | head -1
               rustc --version
+              pacman -Q rust-src
               bindgen --version
               pahole --version
 
@@ -133,12 +146,32 @@ jobs:
               for _f in /etc/makepkg.conf /etc/makepkg.conf.d/*.conf; do
                 [ -f "$_f" ] && cat "$_f" >> "$MAKEPKG_CONF" && echo >> "$MAKEPKG_CONF"
               done
-              sed -i -e "s|^#*PKGDEST=.*||" -e "s|^#*PKGEXT=.*||" -e "s|^#*SRCEXT=.*||" "$MAKEPKG_CONF"
+              sed -i -e "s|^#*PKGDEST=.*||" -e "s|^#*PKGEXT=.*||" -e "s|^#*SRCEXT=.*||" \
+                     -e "s|^#*STRIP_BINARIES=.*||" -e "s|^#*STRIP_SHARED=.*||" -e "s|^#*STRIP_STATIC=.*||" \
+                     "$MAKEPKG_CONF"
               [ -s "$MAKEPKG_CONF" ] || { echo "CARCH=\"$(uname -m)\"" >> "$MAKEPKG_CONF"; echo "CFLAGS=\"-O2 -pipe\"" >> "$MAKEPKG_CONF"; echo "CXXFLAGS=\"-O2 -pipe\"" >> "$MAKEPKG_CONF"; }
               echo "PKGDEST=\"/repo\"" >> "$MAKEPKG_CONF"
               echo "PKGEXT=\".pkg.tar.zst\"" >> "$MAKEPKG_CONF"
               echo "SRCEXT=\".src.tar.gz\"" >> "$MAKEPKG_CONF"
+              # Arch's strip flags (the _package-headers strip loop relies
+              # on them; without a definition it would run a full strip).
+              echo "STRIP_BINARIES=\"--strip-all\"" >> "$MAKEPKG_CONF"
+              echo "STRIP_SHARED=\"--strip-unneeded\"" >> "$MAKEPKG_CONF"
+              echo "STRIP_STATIC=\"--strip-unneeded\"" >> "$MAKEPKG_CONF"
               runuser -u builder -- makepkg --config "$MAKEPKG_CONF" -f --noconfirm
+
+              # Load-bearing Rust verification: the headers package must
+              # ship build/rust/libmacros.so (required by DKMS / out-of-tree
+              # Rust module builds) and its .config must have CONFIG_RUST=y.
+              # Both were missing from the pkgrel=1 packages because Kconfig
+              # silently disables RUST when the toolchain is incomplete.
+              hdr=$(ls /repo/*-headers-*.pkg.tar.zst)
+              tar --zstd -tf "$hdr" | grep -q 'build/rust/libmacros.so' \
+                || { echo "ERROR: $hdr does not contain rust/libmacros.so"; exit 1; }
+              tar --zstd -xOf "$hdr" --wildcards '*/build/.config' \
+                | grep -q '^CONFIG_RUST=y' \
+                || { echo "ERROR: packaged kernel config lacks CONFIG_RUST=y"; exit 1; }
+              echo "Rust artifacts verified in $hdr"
               # Safety net: copy any package that landed outside /repo
               # (e.g. via a config fragment) onto the mounted workspace
               # before the container exits.
