@@ -134,9 +134,10 @@ jobs:
                 [ -f "$_f" ] && cat "$_f" >> "$MAKEPKG_CONF" && echo >> "$MAKEPKG_CONF"
               done
               sed -i -e "s|^#*PKGDEST=.*||" -e "s|^#*PKGEXT=.*||" -e "s|^#*SRCEXT=.*||" "$MAKEPKG_CONF"
-              [ -s "$MAKEPKG_CONF" ] || { echo "CFLAGS=\"-O2 -pipe\"" >> "$MAKEPKG_CONF"; echo "CXXFLAGS=\"-O2 -pipe\"" >> "$MAKEPKG_CONF"; }
+              [ -s "$MAKEPKG_CONF" ] || { echo "CARCH=\"$(uname -m)\"" >> "$MAKEPKG_CONF"; echo "CFLAGS=\"-O2 -pipe\"" >> "$MAKEPKG_CONF"; echo "CXXFLAGS=\"-O2 -pipe\"" >> "$MAKEPKG_CONF"; }
               echo "PKGDEST=\"/repo\"" >> "$MAKEPKG_CONF"
               echo "PKGEXT=\".pkg.tar.zst\"" >> "$MAKEPKG_CONF"
+              echo "SRCEXT=\".src.tar.gz\"" >> "$MAKEPKG_CONF"
               runuser -u builder -- makepkg --config "$MAKEPKG_CONF" -f --noconfirm
               # Safety net: copy any package that landed outside /repo
               # (e.g. via a config fragment) onto the mounted workspace
