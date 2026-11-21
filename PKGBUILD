@@ -62,10 +62,12 @@ _srcname="linux"
 #    anti-bot challenge page, so they are carried on disk.
 #  - 090, 091, 094, 095, 098 (local, adapted): gregordinary patches rebased
 #    onto the DVFS series (same files as the 7.3 edition).
-#  - 092 (local, reworked): gregordinary's extensible-uAPI patch, reworked
-#    for the in-tree regcmd validation (ROCKET_MAX_REGCMDS /
-#    ROCKET_REGCMD_ALIGN now live where its hunks used to land; both are
-#    kept, and the validation still runs on every copied task).
+#  - 092 (local, 7.3 edition): gregordinary's extensible-uAPI patch
+#    (upstream 085-rocket-drv-uapi-extensible-structs.patch) adjusted onto
+#    this tree: its index blobs reference gregordinary's own base tree (his
+#    npu-clk/volt patches are not part of this stack), so the upstream file
+#    cannot be git-am'ed directly; the hunks were re-applied here by context
+#    and regenerated (same uAPI: job_struct_size/task_struct_size).
 #  - downloaded: batched-submit, irq-sync-before-reset and ppu-completion
 #    apply to this tree exactly as upstream carries them, so no local copy
 #    is kept. If raw.githubusercontent.com is unreachable, download the
@@ -118,7 +120,7 @@ prepare() {
     'd8eab548bade5317d23cc17a6778c2990c4417c80fbd86b6fa042b90c4a328d9 patches/089-rocket-dvfs-dts-add-passive-cooling.patch'
     '1325fedadc75af79efa5a63d5a87f74a90f663f424ab3c8cc8ef24689074517d patches/090-rocket-drv-iommu-keepattach.patch'
     'a1c056110ecd67604ba5fc4a0e0b260a374f30ddeaaeee87a008cc1473415424 patches/091-rocket-drv-fix-bo-mm-uaf.patch'
-    '5d02599ef53b6f7dd33c3658662be65428a365bf3c0474a913f81884d5815edd patches/092-rocket-drv-uapi-extensible-structs.patch'
+    '8d57ad4873f7783e6f8505a6f61dbb4093984420dbe8bad960b08715bf9c196c patches/092-rocket-drv-uapi-extensible-structs.patch'
     '4a5f59e13a80ba587b5555c90bbefbd110c9b0b5efd40f1375a60e33eb8a8645 patches/094-rocket-drv-reset-before-iommu-detach.patch'
     'bdec11000dd9b1e76e25fe1ac8206cfc2d163da5cfd93bdca7191f922eaa0dde patches/095-rocket-drv-irq-under-job-lock.patch'
     '69c621cf678f5e6abe6ed7a73b31540bc0fe669efc2e381fdc838766c0af8b8b patches/098-rocket-drv-suspend-after-reset.patch'
