@@ -121,23 +121,23 @@ jobs:
               id builder >/dev/null 2>&1 || useradd -m builder
               chown -R builder:builder /repo
               export MAKEFLAGS="-j$(nproc)"
-              # Pin the package output directory and extension: ALARM's
-              # makepkg.conf sets PKGEXT=.pkg.tar.xz (so the packages would
-              # never match the *.pkg.tar.zst patterns), and a pacman-updated
-              # makepkg.conf / makepkg.conf.d fragment could set PKGDEST
-              # inside the discarded container.
-              # The rolling rootfs is a moving target: a newer snapshot may
-              # move or drop /etc/makepkg.conf entirely (run 6 died here).
-              # Ensure both targets exist before pinning; makepkg is fine
-              # with an empty makepkg.conf.
-              touch /etc/makepkg.conf
-              sed -i "s|^#*PKGDEST=.*|PKGDEST=\"/repo\"|" /etc/makepkg.conf
-              grep -q "^PKGDEST=" /etc/makepkg.conf || echo "PKGDEST=\"/repo\"" >> /etc/makepkg.conf
-              sed -i "s|^#*PKGEXT=.*|PKGEXT=\".pkg.tar.zst\"|" /etc/makepkg.conf
-              grep -q "^PKGEXT=" /etc/makepkg.conf || echo "PKGEXT=\".pkg.tar.zst\"" >> /etc/makepkg.conf
-              [ ! -d /etc/makepkg.conf.d ] || { grep -rl PKGDEST /etc/makepkg.conf.d/ 2>/dev/null | xargs -r sed -i "s|^#*PKGDEST=.*|PKGDEST=\"/repo\"|" ; grep -rl PKGEXT /etc/makepkg.conf.d/ 2>/dev/null | xargs -r sed -i "s|^#*PKGEXT=.*|PKGEXT=\".pkg.tar.zst\"|" ; }
-              export PKGDEST=/repo
-              runuser -u builder -- makepkg -f --noconfirm
+              # Build a makepkg config we fully control instead of editing
+              # the system one: the rolling rootfs keeps changing it under
+              # us (ALARM ships PKGEXT=.pkg.tar.xz; run 6: /etc/makepkg.conf
+              # missing; run 7: not writable even as root). Copy whatever
+              # the system provides, strip the settings we must control,
+              # and pin them at the end. An empty base is fine too: makepkg
+              # then uses its built-in defaults (.pkg.tar.zst, startdir).
+              MAKEPKG_CONF=/tmp/makepkg.conf
+              : > "$MAKEPKG_CONF"
+              for _f in /etc/makepkg.conf /etc/makepkg.conf.d/*.conf; do
+                [ -f "$_f" ] && cat "$_f" >> "$MAKEPKG_CONF" && echo >> "$MAKEPKG_CONF"
+              done
+              sed -i -e "s|^#*PKGDEST=.*||" -e "s|^#*PKGEXT=.*||" -e "s|^#*SRCEXT=.*||" "$MAKEPKG_CONF"
+              [ -s "$MAKEPKG_CONF" ] || { echo "CFLAGS=\"-O2 -pipe\"" >> "$MAKEPKG_CONF"; echo "CXXFLAGS=\"-O2 -pipe\"" >> "$MAKEPKG_CONF"; }
+              echo "PKGDEST=\"/repo\"" >> "$MAKEPKG_CONF"
+              echo "PKGEXT=\".pkg.tar.zst\"" >> "$MAKEPKG_CONF"
+              runuser -u builder -- makepkg --config "$MAKEPKG_CONF" -f --noconfirm
               # Safety net: copy any package that landed outside /repo
               # (e.g. via a config fragment) onto the mounted workspace
               # before the container exits.
