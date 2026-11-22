@@ -1,0 +1,44 @@
+# Install script for linux-aarch64-rockchip.
+#
+# Added after the 2026-11-22 boot outage on the ROCK 5B+ target board: a
+# kernel package was installed, the bcachefs DKMS module failed to build
+# for the new kernel, the initramfs shipped without it, and the next
+# reboot landed in an emergency shell with an unmountable root filesystem.
+# This script keeps removal clean and tells bcachefs-root users what to
+# check before rebooting; a companion pacman hook
+# (99-*-bcachefs-dkms-guard.hook) verifies the module after every kernel
+# transaction.
+
+post_install() {
+  cat <<'EOF'
+>>> bcachefs-root systems: the bcachefs DKMS module must be built for the
+>>> new kernel BEFORE you reboot into it. Check and, if needed, fix:
+>>>     dkms status
+>>>     dkms install bcachefs/<version> -k <kernel-version>
+>>>     mkinitcpio -P
+>>> (a pacman hook now also warns automatically when a kernel is missing
+>>> the module)
+EOF
+}
+
+post_upgrade() {
+  post_install
+}
+
+pre_remove() {
+  # mkinitcpio creates these files outside the pacman database; without
+  # this cleanup they would stay behind as orphans after removal.
+  rm -f /boot/vmlinuz-linux-aarch64-rockchip \
+        /boot/initramfs-linux-aarch64-rockchip.img \
+        /boot/initramfs-linux-aarch64-rockchip-fallback.img \
+        /etc/mkinitcpio.d/linux-aarch64-rockchip.preset
+  cat <<'EOF'
+>>> Removed the mkinitcpio boot files of linux-aarch64-rockchip.
+>>> Before rebooting, also check:
+>>>  - /boot/extlinux/extlinux.conf: update or drop entries that boot this
+>>>    kernel (they would fail after removal).
+>>>  - Files you placed inside /boot/dtbs/linux-aarch64-rockchip/
+>>>    (e.g. the rock5bp-fix-nvme.dtbo overlay) are NOT package-owned and
+>>>    are left behind; copy them somewhere safe if you still need them.
+EOF
+}
