@@ -1,0 +1,16 @@
+# Verify after every pacman transaction involving the kernel package that
+# the bcachefs DKMS module exists for all installed kernels. Background:
+# on 2026-11-22 a ROCK 5B+ with a bcachefs root was left unbootable by a
+# kernel update whose DKMS module build failed silently. See README.md,
+# "Boot safety".
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Type = Package
+Target = linux-aarch64-rockchip-collabora
+
+[Action]
+Description = Checking bcachefs DKMS module availability
+When = PostTransaction
+Exec = /usr/share/libalpm/scripts/linux-aarch64-rockchip-collabora-bcachefs-dkms-guard.sh

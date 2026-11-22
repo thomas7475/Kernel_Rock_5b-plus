@@ -32,7 +32,7 @@ url="https://gitlab.collabora.com/hardware-enablement/rockchip-3588/linux.git"
 _pkgver_sanitized=$(echo "${_gittag}" | sed -e 's/^v//' -e 's/-rc/rc/')
 pkgver=${_pkgver_sanitized}.${_commit::7}
 
-pkgrel=2
+pkgrel=3
 arch=('aarch64')
 license=('GPL2')
 # pahole is the current Arch/ALARM package name (renamed from 'dwarves');
@@ -77,6 +77,9 @@ source=(
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/086-rocket-drv-batched-submit.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/091-rocket-drv-irq-sync-before-reset.patch'
   'https://raw.githubusercontent.com/gregordinary/patches/main/rocket/093-rocket-drv-ppu-completion.patch'
+  # Boot safety: pacman hook + guard script (README, "Boot safety").
+  "99-${pkgbase}-bcachefs-dkms-guard.hook"
+  "${pkgbase}-bcachefs-dkms-guard.sh"
 )
 
 #  The carried patches live in patches/, outside makepkg's build
@@ -92,7 +95,9 @@ sha256sums=('SKIP'
             '793121219855e49d310ddf54300ebdb6a927034b6b9a211069ae03512f503692'
             'cd318ae62ed5c2f183df90e27cbdc2982a62e3f621a8c1fe66f48d33ad328f61'
             'f1d7178645b5104d9b9d6765e7d75febf1b2adb771478e43e3e41ecbb76e87a8'
-            '14c331c05ff3eac4c97de479565e3de76a79c504cd46c3a666548935831e9851')
+            '14c331c05ff3eac4c97de479565e3de76a79c504cd46c3a666548935831e9851'
+            '265a8b0a5c2d79b34247dc77a5841102f0b3439051cb2bdfb474923c0ee5c34d'
+            '3495c60597092d586015e949ca63be83752129a470a9b8da472187ba145367ec')
 
 prepare() {
   cd "${srcdir}/${_srcname}"
@@ -198,6 +203,10 @@ build() {
 _package() {
   pkgdesc="The Linux Kernel and modules - ${_desc}"
   depends=('coreutils' 'initramfs' 'kmod')
+  # Per-package install script (NOT on the headers package): cleans the
+  # mkinitcpio-created boot files on removal, prints the DKMS checklist on
+  # install/upgrade (README, "Boot safety").
+  install="${pkgbase}.install"
   optdepends=(
     'uboot-legacy-initrd-hooks: to generate uboot legacy initrd images'
     'linux-firmware: firmware images needed for some devices'
@@ -220,6 +229,13 @@ _package() {
   # Install DTBs for Rockchip SoCs
   install -d -m 755 "${pkgdir}/boot/dtbs/${pkgbase}"
   cp -a "${srcdir}/dtbs/rockchip" "${pkgdir}/boot/dtbs/${pkgbase}/"
+
+  # Boot safety: pacman hook + guard script that warn when the bcachefs
+  # DKMS module is missing for an installed kernel (README, "Boot safety").
+  install -Dm644 "${srcdir}/99-${pkgbase}-bcachefs-dkms-guard.hook" \
+    "${pkgdir}/usr/share/libalpm/hooks/99-${pkgbase}-bcachefs-dkms-guard.hook"
+  install -Dm755 "${srcdir}/${pkgbase}-bcachefs-dkms-guard.sh" \
+    "${pkgdir}/usr/share/libalpm/scripts/${pkgbase}-bcachefs-dkms-guard.sh"
 }
 
 _package-headers() {

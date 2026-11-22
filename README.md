@@ -13,6 +13,15 @@ The kernel is built automatically by GitHub Actions on a free arm64 runner whene
 
 The NPU runs with devfreq at 200 MHz–1 GHz (OPP table + passive cooling included), and the driver carries the keep-attached IOMMU, batched-submit and IRQ/reset-path fixes from the rocket series. See the patch comments in the `PKGBUILD` for the full story.
 
+## Boot safety (pkgrel 3+)
+
+The kernel package ships two guardrails, added after a 2026-11-22 incident in which a kernel update was installed without the `bcachefs` DKMS module building for it, and the target board could no longer mount its root filesystem on the next reboot:
+
+- `linux-aarch64-rockchip-collabora.install` — `pre_remove` deletes the boot files mkinitcpio creates but pacman does not track (`/boot/vmlinuz-*`, the initramfs images, the mkinitcpio preset), so removing the package no longer leaves orphans behind; `post_install` prints the DKMS checklist for bcachefs-root systems.
+- A pacman hook (`99-…-bcachefs-dkms-guard.hook` plus its script) runs after every transaction involving the kernel package and verifies that the `bcachefs` DKMS module exists for **every installed kernel**, printing a warning with the exact fix commands if one is missing.
+
+If you do not use bcachefs, both guardrails are silent no-ops.
+
 ## Repository layout
 
 ```
